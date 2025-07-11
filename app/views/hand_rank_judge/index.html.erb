@@ -1,0 +1,116 @@
+<%# app/views/hand_rank_judge/index.html.erb %>
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <%# Webページがモバイル端末の画面サイズに合わせて適切に表示される %>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ポーカー</title>
+  <%# CSRFトークンをJavaScriptからアクセスできるようにする %>
+  <meta name="csrf-token" content="<%= form_authenticity_token %>">
+</head>
+<body>
+
+  <div style="text-align: center; margin-top: 50px;">
+    <h1>ポーカー役判定ツール</h1>
+
+    <p>カードを手札の文字列で入力してください (例: H1 H13 H12 H11 H10)</p>
+    <%# input要素にid="handInput"を追加。JavaScriptからアクセスするために必要 %>
+    <form id="pokerForm">
+      <input type="text" id="handInput" placeholder="カードを入力..." size="50">
+    </form>
+
+    <%# 判定結果を表示するdiv要素にid="result"を追加。JavaScriptからアクセスするために必要 %>
+   <br>
+    <div id="result">
+      入力してください。
+    </div>
+  </div>
+
+
+  <script type="module">
+    // DOM要素の取得
+    const pokerForm = document.getElementById('pokerForm'); // form要素を取得
+    const handInput = document.getElementById('handInput');
+    const resultDiv = document.getElementById('result');
+
+    // APIエンドポイントのURL
+    const API_URL = '/api/v1/hand_rank_judge';
+
+    pokerForm.addEventListener('submit', (event) => { event.preventDefault(); });
+
+    let debounceTimer;
+
+    // テキストボックスを監視
+    handInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+
+      // 入力が止まってから一定時間後に処理を実行
+      debounceTimer = setTimeout(() => {
+        const cards = handInput.value.trim();
+
+        // 入力値が空文字列の場合の処理
+        if (cards === '') {
+          resultDiv.textContent = '入力してください。';
+          return;
+        }
+
+        // Ajaxリクエストの送信
+        fetch(API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content // CSRFトークンを取得
+          },
+          body: JSON.stringify({ cards: [cards] })
+        })
+        .then(response => {
+          if (!response.ok) {
+            return response.json().then(errorData => {
+              throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+                  // data.results が存在し、中身が空でないことを確認
+          if (data.results && data.results.length > 0) {
+            // results 配列の最初の要素（0番目）を取得
+            const result = data.results[0];
+
+            // result オブジェクトの中に error があるかで判定
+            if (result.msg) {
+                    // 1. エラーメッセージをカンマで分割して配列にする
+              const errorItems = result.msg;
+
+              // 2. 表示用のHTMLを組み立てる
+              let errorHtml = '<strong>入力エラー:</strong><br>';
+              errorItems.forEach(msg => {
+                // liタグで各エラーメッセージを囲む
+                errorHtml += `${msg.trim()}<br>`;
+              });
+
+              // 3. textContentの代わりにinnerHTMLを使い、HTMLとして反映させる
+              resultDiv.innerHTML = errorHtml;
+
+            } else {
+              // 成功した場合の処理
+              resultDiv.textContent = `手札: ${result.card} は ${result.hand} です！`;
+            }
+          } else {
+            // data.results が空だった場合のエラー（一応）
+            resultDiv.textContent = 'サーバーから有効な応答がありませんでした。';
+          }
+        })
+        .catch(error => {
+          // 予期せぬエラーが発生した場合の処理
+          console.error('Error judging hand:', error);
+          resultDiv.textContent = `予期せぬエラー: ${error.message}`;
+        });
+      }, 500); // 入力が止まって500ミリ秒後に処理を実行
+    });
+  </script>
+
+</body>
+</html>

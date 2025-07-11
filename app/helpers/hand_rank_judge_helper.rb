@@ -1,0 +1,2 @@
+module HandRankJudgeHelper
+end
